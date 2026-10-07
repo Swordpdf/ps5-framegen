@@ -49,6 +49,29 @@ repeats = 1 if half < 1.9, 2 if half < 3.8, 3 above, with 0.2 of hysteresis goin
 
 Measure the interval as a running mean of the time between the game's flips (0.85/0.15 here), ignoring gaps over 250 ms.
 
+## More than one frame in between (the multiplier)
+
+`set_generated(n)` before `record()` makes n frames between two of the game's, at 1/(n+1), 2/(n+1), ... of the way:
+
+- `record()` makes the first one;
+- `interpolate_next(cmd, i)` makes the i-th of the others into the same `output_image()`, once the caller has copied the one before
+  (the barriers are included);
+- the first one keeps the still history and the quads' motions, and the others only read them.
+
+Present each generated frame for one refresh, then the game's frame:
+
+| Multiplier | Game rate | Display | Delay of the game's frame |
+|---|---|---|---|
+| x3 | 40 fps | 120 Hz | 2 refreshes (17 ms), against 1 at x2 |
+| x4 | 30 fps | 120 Hz | 3 refreshes (25 ms), against 2 at x2 |
+
+So more frames mean smoother motion for more input lag. RPCS3-PS5 keeps x2 as the default (ps5.yml "Frame Generation Multiplier":
+2, 3 or 4).
+
+**Swapchain images:** with 4 of them, x4 needs one more image than is free (one on screen, the game's frame's acquired in advance,
+three generated). The third acquire of a frame waits for a refresh. Count only the first acquire of a frame as a sign of a full
+queue.
+
 ## Latency
 
 Interpolation shows each game frame half a frame later than it would otherwise be shown (8 ms at 60 fps, 17 ms at 30), plus the
@@ -63,9 +86,10 @@ generated frame's GPU time. That half frame cannot be avoided: the frame in betw
      `display rate / presents per frame - 0.05` fps (RPCS3: its second frame limit). The queue then stays empty. Once in a while
      (every 20 s or so) a refresh shows an image twice.
    - **Where it is not needed:** at 30 fps on 120 Hz the game frame brings 3 presents for 4 refreshes, so the queue empties every
-     frame anyway.
-2. **Drain it if it fills anyway.** Time `vkAcquireNextImageKHR` for the generated frame's present. If it waited for a refresh
-   (over 2 ms), every image was queued or on screen: leave the next generated frame out, so the queue comes down by one.
+     frame anyway. With several generated frames the presents a frame are the multiplier.
+2. **Drain it if it fills anyway.** Time the first `vkAcquireNextImageKHR` of the frame's generated presents. If it waited for a
+   refresh (over 2 ms), every image was queued or on screen: leave the next frame's generated frames out, so the queue comes down by
+   one.
 3. **Keep the GPU time low.** The status line reports it split into the optical flow and the interpolation
    (`take_gpu_time(mean, max, count, flow_mean)`), read back a few frames later without waiting.
 

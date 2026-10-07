@@ -42,11 +42,14 @@ namespace example
 		std::chrono::steady_clock::time_point last_flip{};
 		double held_at = -1.0;
 
-		bool start(renderer& r)
+		bool start(renderer& r, std::uint32_t multiplier = 2) // 2: one generated frame between two of the game's, 3: two, 4: three
 		{
 			std::string error;
 			reset_next = true;
-			return fg.create(r.physical, r.device, r.width, r.height, error);
+			if (!fg.create(r.physical, r.device, r.width, r.height, error))
+				return false;
+			fg.set_generated(multiplier - 1);
+			return true;
 		}
 
 		// Once per game frame, instead of presenting the game's frame directly. `frame_limit`: the game's frame limit (0: none).
@@ -82,7 +85,8 @@ namespace example
 			}
 
 			// 4. latency: where the presents fill every refresh, hold the game a hair under the display so the queue stays empty
-			const double presents = repeats + 1.0;
+			const std::uint32_t generated = fg.generated();
+			const double presents = generated > 1 ? generated + 1.0 : repeats + 1.0;
 			const bool tight = frame_limit > 0.0 && r.display_hz / frame_limit - presents < 0.25;
 			const double hold = tight ? r.display_hz / presents - 0.05 : frame_limit;
 			if (hold != held_at)
@@ -91,21 +95,26 @@ namespace example
 				r.set_frame_limit(hold);
 			}
 
-			// 5. the generated frame, `repeats` times (left out once when the last acquire found the queue full)
+			// 5. the generated frame, `repeats` times, or the generated frames one refresh each (left out once when the last frame's
+			// first acquire found the queue full)
 			if (made)
 			{
-				const std::uint32_t shown = backlog ? 0 : repeats;
+				const std::uint32_t shown = backlog ? 0 : generated > 1 ? generated : repeats;
 				backlog = false;
 
 				for (std::uint32_t i = 0; i < shown; i++)
 				{
+					if (generated > 1 && i > 0)
+						fg.interpolate_next(cmd, i); // the next moment, into output_image(), after the copy of the one before
+
 					const VkSemaphore acquired = r.next_acquire_semaphore();
 					std::uint32_t index = 0;
 					const auto t0 = std::chrono::steady_clock::now();
 					if (vkAcquireNextImageKHR(r.device, r.swapchain, 100000000ull, acquired, VK_NULL_HANDLE, &index) < 0)
 						break;
-					if (std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() > 2.0)
-						backlog = true; // an image came free only at a refresh: every image was queued or on screen
+					// the frame's first present found no image free before a refresh: every image was queued or on screen
+					if (i == 0 && std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() > 2.0)
+						backlog = true;
 
 					r.blit_to_swapchain(cmd, fg.output_image(), index);
 					r.draw_overlays(cmd, index); // or they blink

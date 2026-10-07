@@ -28,6 +28,18 @@ The true middle frame is rendered too. The result is scored against it by region
 0-255), next to the plain blend and the two frames. `out.png.cmp.png` shows A, B, the truth, the blend, the result and its error
 around each region.
 
+`--gen N` makes N frames between the last two (multi-frame generation): `out.png`, `out.png.1.png`, ... For a scene, each one is
+measured against its own true frame. On the "all" scene:
+
+| Multiplier | Moment | Error | Head edge | HUD | Square edge |
+|---|---|---|---|---|---|
+| x2 | 1/2 | 0.76 | 4.79 | 3.45 | 10.25 |
+| x3 | 1/3 | 0.86 | 4.49 | 3.05 | 13.61 |
+| x3 | 2/3 | 0.87 | 4.66 | 2.91 | 15.72 |
+| x4 | 1/4 | 0.61 | 4.13 | 2.48 | 8.22 |
+| x4 | 1/2 | 0.74 | 4.88 | 3.16 | 10.40 |
+| x4 | 3/4 | 0.64 | 4.25 | 2.43 | 11.14 |
+
 ## Real frames
 
 ```sh

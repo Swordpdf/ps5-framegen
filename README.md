@@ -4,6 +4,8 @@ Frame generation for PS5 homebrew on Vulkan: from two frames of a game, the fram
 at 30 fps is shown at 60 on a 120 Hz display, a game at 60 at 120. It needs nothing from the game but its frames: no motion vectors and
 no depth. That makes it fit emulators and ports, where the game never hands those over.
 
+It can also make 2 or 3 frames in between (multi-frame generation: 40 fps or 30 fps shown at 120), at the cost of more input lag.
+
 It comes from [RPCS3-PS5](https://github.com/Swordpdf)'s frame generation (the PS3 emulator's PS5 port), where it runs on the
 console in GTA IV, inFamous and others. This repository is that code taken out on its own, as a template to start from.
 

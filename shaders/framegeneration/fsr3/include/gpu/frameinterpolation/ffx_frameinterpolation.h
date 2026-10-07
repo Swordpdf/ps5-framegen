@@ -141,6 +141,40 @@ FfxFloat32 FgDiff(FfxFloat32x3 a, FfxFloat32x3 b)
     return d.x + d.y + d.z;
 }
 
+// m74: more than one frame generated between two of the game's (ps5_framegen.h, set_generated): the moment t of this one, from 0 (the
+// previous frame) to 1 (the current one). The motions are half vectors v (the way from the current frame to the previous one,
+// halved), so what is at uv at moment t is in the previous frame at uv + 2t v and in the current one at uv - 2(1 - t) v (at t = 0.5,
+// uv + v and uv - v exactly), and the blend weighs the nearer frame more. Only the first frame generated keeps the still history and
+// the quads' motions (FG_DISPATCH_KEEP_HISTORY on the others). The vector field is FSR3's halfway one for every moment.
+#define FG_DISPATCH_KEEP_HISTORY (1u << 8)
+
+FfxFloat32 FgT()
+{
+    FfxFloat32 t = InterpolationT(); // (not const: glslang refuses a const local from a const-returning function)
+    return (t > 0.0f && t < 1.0f) ? t : 0.5f;
+}
+
+FfxFloat32 FgTP()
+{
+    return 2.0f * FgT();
+}
+
+FfxFloat32 FgTC()
+{
+    return 2.0f * (1.0f - FgT());
+}
+
+FfxBoolean FgKeepHistory()
+{
+    return (GetDispatchFlags() & FG_DISPATCH_KEEP_HISTORY) != 0;
+}
+
+FfxFloat32x3 FgBlend(FfxFloat32x3 p, FfxFloat32x3 c)
+{
+    const FfxFloat32 t = FgT();
+    return (t == 0.5f) ? 0.5f * (p + c) : p * (1.0f - t) + c * t;
+}
+
 struct FgPixel
 {
     FfxFloat32x2 fUv;
@@ -166,8 +200,8 @@ void FgTryCandidate(inout FgPixel px[4], FfxInt32 k, FfxFloat32x2 fMv, FfxFloat3
     FFX_UNROLL
     for (FfxInt32 i = 0; i < 4; i++)
     {
-        const FfxFloat32x2 fUvP = px[i].fUv + fMv;
-        const FfxFloat32x2 fUvC = px[i].fUv - fMv;
+        const FfxFloat32x2 fUvP = px[i].fUv + fMv * FgTP();
+        const FfxFloat32x2 fUvC = px[i].fUv - fMv * FgTC();
         p[i] = SamplePreviousBackbuffer(fUvP);
         c[i] = SampleCurrentBackbuffer(fUvC);
         const FfxBoolean bInP = IsUvInside(fUvP);
@@ -228,7 +262,7 @@ FfxFloat32 FgUnlike(FfxFloat32x2 fQuadUv, FfxFloat32x2 fMv, FfxInt32x2 iFieldSiz
     FFX_UNROLL
     for (FfxInt32 side = 0; side < 2; side++)
     {
-        const FfxFloat32x2 fAt   = (side == 0) ? fQuadUv - fMv : fQuadUv + fMv;
+        const FfxFloat32x2 fAt   = (side == 0) ? fQuadUv - fMv * FgTC() : fQuadUv + fMv * FgTP();
         const FfxInt32x2   iNear = FfxInt32x2(floor(fAt * fBlock - 0.5f));
         FfxFloat32 fBest = 1e9f;
 
@@ -253,8 +287,8 @@ FfxFloat32 FgQuadError(FgPixel px[4], FfxFloat32x2 fMv)
     FFX_UNROLL
     for (FfxInt32 i = 0; i < 4; i++)
     {
-        const FfxFloat32x2 fUvP = px[i].fUv + fMv;
-        const FfxFloat32x2 fUvC = px[i].fUv - fMv;
+        const FfxFloat32x2 fUvP = px[i].fUv + fMv * FgTP();
+        const FfxFloat32x2 fUvC = px[i].fUv - fMv * FgTC();
         fSum += (IsUvInside(fUvP) && IsUvInside(fUvC)) ? FgDiff(SamplePreviousBackbuffer(fUvP), SampleCurrentBackbuffer(fUvC)) : 3.0f;
     }
 
@@ -499,7 +533,8 @@ void computeFrameinterpolationQuad(FfxInt32x2 iQuad)
         }
 
         const FfxFloat32 fStillQ = px[0].fErr0 + px[1].fErr0 + px[2].fErr0 + px[3].fErr0 + 4.0f * (0.5f * fMean0 + 0.008f);
-        StoreQuadMotion(iQuad, (fBestQ < fStillQ) ? fBestV * fSize : FfxFloat32x2(0.0f, 0.0f));
+        if (!FgKeepHistory())
+            StoreQuadMotion(iQuad, (fBestQ < fStillQ) ? fBestV * fSize : FfxFloat32x2(0.0f, 0.0f));
     }
 #endif
 
@@ -511,15 +546,17 @@ void computeFrameinterpolationQuad(FfxInt32x2 iQuad)
             continue;
 
         // still for FG_STILL_FRAMES frames: no motion
-        const FfxUInt32  uStill  = (px[i].fErr0 < FG_STILL) ? ffxMin(LoadStaticHistory(iPos) + 1, 255u) : 0u;
-        StoreStaticHistory(iPos, uStill);
+        // (m74: a second or third frame generated between the same two reads what the first one stored)
+        const FfxUInt32  uStill  = (px[i].fErr0 < FG_STILL) ? (FgKeepHistory() ? LoadStaticHistory(iPos) : ffxMin(LoadStaticHistory(iPos) + 1, 255u)) : 0u;
+        if (!FgKeepHistory())
+            StoreStaticHistory(iPos, uStill);
         const FfxBoolean bForced = uStill >= FG_STILL_FRAMES;
 
         // the best candidate, and its blend; a tie goes to a motion (a moving pattern can match "no motion" for a frame or two)
         const FfxFloat32 fScore0 = px[i].fErr0 + 0.5f * fMean0 + 0.008f;
         const FfxBoolean bStill  = bForced || fScore0 <= px[i].fScoreA;
         FfxFloat32       fErr    = bStill ? px[i].fErr0 : px[i].fErrA;
-        FfxFloat32x3     fColor  = bStill ? 0.5f * (px[i].fPrev0 + px[i].fCurr0) : 0.5f * (px[i].fPrevA + px[i].fCurrA);
+        FfxFloat32x3     fColor  = bStill ? FgBlend(px[i].fPrev0, px[i].fCurr0) : FgBlend(px[i].fPrevA, px[i].fCurrA);
 
 #if !defined(FG_NO_OWN_MATCH)
         // m73f: the quad's choice does not agree at this pixel, but a motion (or none) does, at this pixel alone: the pixel belongs to
@@ -534,7 +571,7 @@ void computeFrameinterpolationQuad(FfxInt32x2 iQuad)
             if (fOwnErr < FG_MATCH)
             {
                 fErr   = fOwnErr;
-                fColor = bOwnStill ? 0.5f * (px[i].fPrev0 + px[i].fCurr0) : 0.5f * (px[i].fPrevM + px[i].fCurrM);
+                fColor = bOwnStill ? FgBlend(px[i].fPrev0, px[i].fCurr0) : FgBlend(px[i].fPrevM, px[i].fCurrM);
             }
         }
 #endif
@@ -559,8 +596,8 @@ void computeFrameinterpolationQuad(FfxInt32x2 iQuad)
                     fMvB    = fCand[k];
                 }
             }
-            const FfxFloat32x2 fUvP = px[i].fUv + fMvA;
-            const FfxFloat32x2 fUvC = px[i].fUv - fMvA;
+            const FfxFloat32x2 fUvP = px[i].fUv + fMvA * FgTP();
+            const FfxFloat32x2 fUvC = px[i].fUv - fMvA * FgTC();
 
             FfxFloat32 fOwnP = 3.0f;
             FfxFloat32 fOwnC = 3.0f;

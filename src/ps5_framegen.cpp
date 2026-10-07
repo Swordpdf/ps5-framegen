@@ -19,6 +19,17 @@ namespace ps5::framegen
 		std::atomic<bool> g_wanted{false};
 		std::atomic<std::uint32_t> g_limit{0};
 		std::atomic<bool> g_debug{false};
+		std::atomic<std::uint32_t> g_multiplier{2};
+	}
+
+	void set_multiplier(std::uint32_t times)
+	{
+		g_multiplier.store(times < 2 ? 2 : times > 4 ? 4 : times, std::memory_order_relaxed);
+	}
+
+	std::uint32_t multiplier()
+	{
+		return g_multiplier.load(std::memory_order_relaxed);
 	}
 
 	void set_debug(bool on)
@@ -144,18 +155,19 @@ namespace ps5::framegen
 			u32 back_buffer_transfer_function;
 			float min_max_luminance[2];
 			float tan_half_fov;
-			std::int32_t pad1;
+			float interpolation_t; // m74: the moment generated (0 or 0.5: halfway)
 			float jitter[2];
 			float motion_vector_scale[2];
 		};
 		static_assert(sizeof(cb_fi) == 176 && offsetof(cb_fi, device_to_view_depth) == 48 && offsetof(cb_fi, optical_flow_scale) == 80 &&
 			offsetof(cb_fi, interpolation_rect_base) == 112 && offsetof(cb_fi, debug_bar_color) == 128 && offsetof(cb_fi, jitter) == 160);
 
-		// The blocks of a constant slot: cbOF for each pyramid level, cbOF_SPD, cbFI.
+		// The blocks of a constant slot: cbOF for each pyramid level, cbOF_SPD, cbFI (m74: one for each frame generated, up to 3).
 		constexpr u32 k_block_of = 0;
 		constexpr u32 k_block_of_spd = k_levels;
 		constexpr u32 k_block_fi = k_levels + 1;
-		constexpr u32 k_blocks = k_levels + 2;
+		constexpr u32 k_max_generated = 3;
+		constexpr u32 k_blocks = k_levels + 1 + k_max_generated;
 
 		void memory_barrier(VkCommandBuffer cmd, VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage, VkAccessFlags src_access, VkAccessFlags dst_access)
 		{
@@ -814,6 +826,11 @@ namespace ps5::framegen
 				vkUpdateDescriptorSets(m_device, static_cast<u32>(writes.size()), writes.data(), 0, nullptr);
 			}
 
+			if (s.shader == sh_fi_interpolate)
+			{
+				m_interp_dispatch = static_cast<u32>(m_dispatches.size()); // m74: interpolate_next() dispatches it again
+			}
+
 			m_dispatches.push_back(d);
 		}
 
@@ -972,7 +989,15 @@ namespace ps5::framegen
 			c.min_max_luminance[1] = 1.f;
 			c.tan_half_fov = 1.f;
 			c.dispatch_flags = m_debug_view ? (1u << 2) : 0u; // FFX_FRAMEINTERPOLATION_DISPATCH_DRAW_DEBUG_VIEW
-			std::memcpy(base + k_block_fi * m_ubo_block, &c, sizeof(c));
+
+			// m74: the moment of each frame generated, a (i + 1) / (n + 1) of the way; the ones after the first keep the history as it is
+			// (FG_DISPATCH_KEEP_HISTORY in ffx_frameinterpolation.h)
+			for (u32 i = 0; i < k_max_generated; i++)
+			{
+				c.interpolation_t = m_generated == 1 ? 0.5f : static_cast<float>(i + 1) / static_cast<float>(m_generated + 1);
+				c.dispatch_flags = (m_debug_view ? (1u << 2) : 0u) | (i ? (1u << 8) : 0u);
+				std::memcpy(base + (k_block_fi + i) * m_ubo_block, &c, sizeof(c));
+			}
 		}
 	}
 
@@ -1037,6 +1062,9 @@ namespace ps5::framegen
 		{
 			reset = true;
 		}
+
+		m_last_slot = slot;
+		m_last_parity = parity;
 
 		m_flow_frame_index = reset ? 0 : m_flow_frame_index + 1;
 		write_constants(slot, reset);
@@ -1178,6 +1206,38 @@ namespace ps5::framegen
 			m_interpolated++;
 		}
 
+		m_last_made = !reset;
 		return !reset;
+	}
+
+	bool interpolator::interpolate_next(VkCommandBuffer cmd, u32 i)
+	{
+		if (!m_device || !m_last_made || i == 0 || i >= m_generated || m_interp_dispatch >= m_dispatches.size())
+		{
+			return false;
+		}
+
+		const dispatch_t& d = m_dispatches[m_interp_dispatch];
+		const pipeline_t& p = m_pipelines[d.pipeline];
+
+		// The caller's copy of the frame before reads output_image(): this one writes it only after that (an execution dependency).
+		memory_barrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+			VK_ACCESS_SHADER_WRITE_BIT);
+
+		// The same pass as record()'s last, with the i-th frame's constants (write_constants: one cbFI block a frame generated)
+		u32 offsets[2] = {};
+		for (u32 k = 0; k < d.ubo_count; k++)
+		{
+			offsets[k] = m_last_slot * m_ubo_slot + d.ubo_offsets[k] + (k == 0 ? i * m_ubo_block : 0);
+		}
+
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p.pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, p.layout, 0, 1, &d.set[m_last_parity], d.ubo_count, offsets);
+		vkCmdDispatch(cmd, d.groups[0], d.groups[1], d.groups[2]);
+
+		memory_barrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT);
+		m_interpolated++;
+		return true;
 	}
 }

@@ -45,6 +45,12 @@ namespace ps5::framegen
 	void set_debug(bool on);
 	bool debug();
 
+	// m74: ps5.yml "Frame Generation Multiplier": 2 (the default) shows one generated frame between two of the game's, 3 two (at a
+	// third and two thirds of the way: 40 fps shown at 120), 4 three (30 at 120). Each extra frame delays the game's own frame by
+	// one more refresh, so 2 has the least input lag.
+	void set_multiplier(std::uint32_t times);
+	std::uint32_t multiplier();
+
 	class interpolator
 	{
 	public:
@@ -76,6 +82,13 @@ namespace ps5::framegen
 		// transfer reads of output_image() and frame_image() are included). Returns whether output_image() was made.
 		bool record(VkCommandBuffer cmd, bool reset);
 		VkImage output_image() const { return m_output.image; }
+
+		// m74: the frames generated between two of the game's (1 to 3; set before record()). record() makes the first one, at a 1 / (n + 1)
+		// of the way; interpolate_next(cmd, i) makes the i-th of the others (1 to n - 1) in output_image(), after the caller has copied
+		// the one before (the barriers included). The first one keeps the still history and the quads' motions; the others only read them.
+		void set_generated(std::uint32_t n) { m_generated = n < 1 ? 1 : n > 3 ? 3 : n; }
+		std::uint32_t generated() const { return m_generated; }
+		bool interpolate_next(VkCommandBuffer cmd, std::uint32_t i);
 
 		// After the frame's images were used (copied for presenting): frame_image() becomes previous_image().
 		void advance();
@@ -169,6 +182,12 @@ namespace ps5::framegen
 		VkDescriptorPool m_pool = VK_NULL_HANDLE;
 		std::vector<pipeline_t> m_pipelines;
 		std::vector<dispatch_t> m_dispatches;
+
+		std::uint32_t m_generated = 1;        // m74: frames generated between two of the game's
+		std::uint32_t m_last_slot = 0;        // m74: record()'s constant slot and frame parity, for interpolate_next()
+		std::uint32_t m_last_parity = 0;
+		bool m_last_made = false;
+		std::uint32_t m_interp_dispatch = ~0u; // m74: the interpolation's entry in m_dispatches
 
 		std::uint64_t m_frames = 0;           // frames recorded
 		std::uint64_t m_interpolated = 0;

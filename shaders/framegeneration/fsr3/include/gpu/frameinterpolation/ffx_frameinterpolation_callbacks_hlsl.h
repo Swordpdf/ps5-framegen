@@ -77,7 +77,7 @@
 
         FfxFloat32x2    minMaxLuminance;
         FfxFloat32      fTanHalfFOV;
-        FfxInt32        _pad1;
+        FfxFloat32      fInterpolationT;   // RPCS3-PS5 (m74): the moment generated, from 0 (the previous frame) to 1 (the current one)
 
         FfxFloat32x2    fJitter;
         FfxFloat32x2    fMotionVectorScale;
@@ -86,6 +86,12 @@
     const FfxFloat32x2 Jitter()
     {
         return fJitter;
+    }
+
+    // RPCS3-PS5 (m74): the moment of the frame generated (0.5 halfway; 0 when not set, which means halfway too)
+    const FfxFloat32 InterpolationT()
+    {
+        return fInterpolationT;
     }
 
     const FfxFloat32x2 MotionVectorScale()

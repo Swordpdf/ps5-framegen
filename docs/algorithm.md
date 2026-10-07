@@ -88,6 +88,13 @@ fraction, and that motion becomes one more candidate. Quads that already agree w
   - The history is cleared when the interpolator starts. Before m74 it started with whatever the memory held, and random pixels
     of moving things were held still.
 
+### Other moments than halfway
+
+With several frames generated (`set_generated`), the frame at moment `t` (0 is the previous frame, 1 the current one) takes A at
+`x + 2t v` and B at `x - 2(1 - t) v`. At `t = 0.5` that is exactly `x + v` and `x - v`. The blend weighs the nearer frame more. The
+vector field stays FSR3's halfway one for every moment: its candidates are a little off away from the middle, and the other
+candidates are not tied to a moment. The still history and the quads' motions are updated by the first frame of the group only.
+
 ### Debug view
 
 With `dispatchFlags` bit 2 (`set_debug_view(true)`), the output shows the decisions instead of the picture:

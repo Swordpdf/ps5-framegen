@@ -4,10 +4,10 @@
 //   fg-test A.png B.png OUT.png [--shift N]   with --shift, B is A moved N pixels right (A.png's B is ignored), and the result is
 //                                              compared with A moved N/2 pixels (and with the plain blend of A and B)
 //   fg-test --object OUT.png                    a synthetic test: a textured square moving 40 pixels over a textured background
-//   fg-test --seq OUT.png [--debug 1] F1.png F2.png ...
+//   fg-test --seq OUT.png [--debug 1] [--gen N] F1.png F2.png ...
 //                                              m73f: real consecutive frames in order (a frame dump's game frames); writes the frame
 //                                              between the last two
-//   fg-test --scene NAME OUT.png [--bg BG.png] [--pan N] [--obj N] [--head-move N] [--debug 1]
+//   fg-test --scene NAME OUT.png [--bg BG.png] [--pan N] [--obj N] [--head-move N] [--debug 1] [--gen N]
 //                                              m73b: a scene with a true middle frame, measured by region. The background (BG.png,
 //                                              1280x720, e.g. a frame of the game; noise without it) pans N pixels a frame (12) under
 //                                              what the scene adds, which stays still on screen like a game's HUD or the character
@@ -572,7 +572,7 @@ int main(int argc, char** argv)
 	// 14 frames for the scenes: the interpolation's still history needs 8 frames in a row (FG_STILL_FRAMES); --seq: as many as given
 	int seq_frames = argc - 3;
 	for (int i = 3; i + 1 < argc; i++)
-		if (std::strcmp(argv[i], "--debug") == 0) seq_frames -= 2;
+		if (std::strcmp(argv[i], "--debug") == 0 || std::strcmp(argv[i], "--gen") == 0) seq_frames -= 2;
 	const int frames = (argc >= 2 && std::strcmp(argv[1], "--scene") == 0) ? 14 : (argc >= 2 && std::strcmp(argv[1], "--seq") == 0) ? std::max(2, seq_frames) : 8;
 	static int frames_static;
 	frames_static = frames;
@@ -581,6 +581,8 @@ int main(int argc, char** argv)
 	std::vector<std::array<int, 4>> boxes;
 	const bool object = argc >= 3 && std::strcmp(argv[1], "--object") == 0;
 	bool debug_view = false; // --debug 1: the last interpolated frame shows the decisions (set_debug_view)
+	int gen = 1;             // m74 --gen N: N frames generated between the last two (interpolator::set_generated), OUT.png, OUT.1.png, ...
+	static scene_t* scene = nullptr;
 
 	if (argc >= 4 && std::strcmp(argv[1], "--scene") == 0)
 	{
@@ -595,6 +597,7 @@ int main(int argc, char** argv)
 			else if (std::strcmp(argv[i], "--obj") == 0) s.obj = std::atoi(argv[i + 1]);
 			else if (std::strcmp(argv[i], "--debug") == 0) debug_view = std::atoi(argv[i + 1]) != 0;
 			else if (std::strcmp(argv[i], "--head-move") == 0) s.head_move = std::atoi(argv[i + 1]);
+			else if (std::strcmp(argv[i], "--gen") == 0) gen = std::max(1, std::min(3, std::atoi(argv[i + 1])));
 			else die("bad option");
 		}
 		if (s.pan & 1) die("--pan must be even (the middle frame is half of it)");
@@ -611,7 +614,8 @@ int main(int argc, char** argv)
 		std::printf("scene %s: %dx%d, background %s panning %d px a frame, square %d px a frame\n", name.c_str(), s.w, s.h, bgpath ? bgpath : "noise", s.pan, s.obj);
 		frame_at = [](int k) { return render(s, k, nullptr); };
 		std::vector<unsigned char> ids;
-		truth = render(s, frames - 1.5, &ids);
+		scene = &s;
+		truth = render(s, frames - 2 + 1.0 / (gen + 1), &ids); // m74: the first frame generated, a 1 / (gen + 1) of the way
 		reg = regions(ids, s.w, s.h);
 		a = render(s, frames - 2, nullptr);
 		b = render(s, frames - 1, nullptr);
@@ -632,6 +636,11 @@ int main(int argc, char** argv)
 			if (std::strcmp(argv[i], "--debug") == 0 && i + 1 < argc)
 			{
 				debug_view = std::atoi(argv[++i]) != 0;
+				continue;
+			}
+			if (std::strcmp(argv[i], "--gen") == 0 && i + 1 < argc)
+			{
+				gen = std::max(1, std::min(3, std::atoi(argv[++i])));
 				continue;
 			}
 			picture p;
@@ -704,6 +713,8 @@ int main(int argc, char** argv)
 
 	// A reset, then frames moving on: FSR3 does not interpolate for a few frames after a reset or a scene change (its scene change
 	// detection keeps 4 frames of history), so the last pair is the one measured.
+	fg.set_generated(static_cast<uint32_t>(gen));
+
 	for (int frame = 0; frame < frames; frame++)
 	{
 		const picture cur = frame_at(frame);
@@ -777,6 +788,37 @@ int main(int argc, char** argv)
 					for (int i = 0; i < 4; i++)
 						if (n[i]) std::printf("  %-12s                    %7.2f %7.2f %7.2f %7.2f %8d\n", names[i], eo[i], eb[i], ea[i], ebb[i], n[i]);
 					save(std::string(out) + ".cmp.png", comparison({&a, &b, &truth, &plain, &o}, boxes));
+				}
+			}
+
+			// m74: the other frames generated between the same two (--gen), each against its own true frame for a scene
+			for (int i = 1; i < gen; i++)
+			{
+				VkCommandBuffer cmd2 = g.begin();
+				if (!fg.interpolate_next(cmd2, static_cast<uint32_t>(i))) die("interpolate_next");
+				download(cmd2, fg.output_image(), staging, a.w, a.h);
+				g.submit(cmd2);
+				picture oi = a;
+				std::memcpy(oi.rgba.data(), map, bytes);
+				for (size_t k = 3; k < oi.rgba.size(); k += 4) oi.rgba[k] = 255;
+				const std::string name = std::string(out) + "." + std::to_string(i) + ".png";
+				save(name, oi);
+				std::printf("wrote %s (at %.3f of the way)\n", name.c_str(), (i + 1.0) / (gen + 1));
+				if (scene)
+				{
+					const picture ti = render(*scene, frames - 2 + (i + 1.0) / (gen + 1), nullptr);
+					std::printf("  mean abs error against its true frame: %.2f (plain blend %.2f)\n", diff(oi, ti, 24), diff(blend(a, b), ti, 24));
+					if (!reg.empty())
+					{
+						static const char* names[4] = {"rest", "head edge", "HUD", "square edge"};
+						double eo[4];
+						int n[4];
+						std::vector<unsigned char> ids;
+						render(*scene, frames - 2 + (i + 1.0) / (gen + 1), &ids);
+						region_errors(oi, ti, regions(ids, a.w, a.h), eo, n);
+						for (int r = 0; r < 4; r++)
+							if (n[r]) std::printf("  %-12s %7.2f\n", names[r], eo[r]);
+					}
 				}
 			}
 		}
