@@ -92,7 +92,7 @@ On real GTA IV frames (1920x1080, the frame between frames i and i+2 against the
 | plain blend of the two frames | 3.913 | 92,189 | 516 | 34.44 |
 | FSR3-style single candidate set (m73d) | 1.200 | 13,585 | 1,749 | 40.66 |
 | m73g (+ neighbours, + consistency penalty) | 1.259 | 13,279 | 1,730 | 40.68 |
-| **m74 (this)** | **1.237** | **12,893** | **1,451** | **40.72** |
+| **m74 (this)** | **1.237** | **12,887** | **1,449** | **40.72** |
 
 [docs/testing.md](docs/testing.md) has the synthetic scenes, the variants that were tried and dropped, and how to run all of it.
 

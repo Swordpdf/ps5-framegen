@@ -66,7 +66,9 @@ Present each generated frame for one refresh, then the game's frame:
 | x4 | 30 fps | 120 Hz | 3 refreshes (25 ms), against 2 at x2 |
 
 So more frames mean smoother motion for more input lag. RPCS3-PS5 keeps x2 as the default (ps5.yml "Frame Generation Multiplier":
-2, 3 or 4).
+2, 3 or 4). The multiplier is a most: RPCS3-PS5 generates as many frames as the game's frame interval has refreshes, less one. A
+game slower than the multiplier wants would otherwise get its generated frames bunched together and its own frame held for the rest
+(x3 at 30 fps: 1/3, 2/3, 1, 1).
 
 **Swapchain images:** with 4 of them, x4 needs one more image than is free (one on screen, the game's frame's acquired in advance,
 three generated). The third acquire of a frame waits for a refresh. Count only the first acquire of a frame as a sign of a full
@@ -82,9 +84,10 @@ generated frame's GPU time. That half frame cannot be avoided: the frame in betw
      brings as many presents as it has refreshes (60 fps on 120 Hz: the generated frame and the game's, one refresh each),
      nothing drains that queue. A game a hair faster than the display (60.00 against 59.94) fills it, and from then on every frame
      is shown three refreshes later: 25 ms at 120 Hz.
-   - **The hold:** when `refreshes per frame at the frame limit - presents per frame < 0.25`, hold the game at
-     `display rate / presents per frame - 0.05` fps (RPCS3: its second frame limit). The queue then stays empty. Once in a while
-     (every 20 s or so) a refresh shows an image twice.
+   - **The hold:** when `refreshes per frame at the frame limit - presents per frame < 0.25`, or when there is no frame limit at
+     all, hold the game at `display rate / presents per frame - 0.05` fps (RPCS3: its second frame limit). Take the user's own
+     second limit into the frame limit first, as RPCS3's limiter does. The queue then stays empty. Once in a while (every 20 s or
+     so) a refresh shows an image twice.
    - **Where it is not needed:** at 30 fps on 120 Hz the game frame brings 3 presents for 4 refreshes, so the queue empties every
      frame anyway. With several generated frames the presents a frame are the multiplier.
 2. **Drain it if it fills anyway.** Time the first `vkAcquireNextImageKHR` of the frame's generated presents. If it waited for a

@@ -289,7 +289,14 @@ FfxFloat32 FgQuadError(FgPixel px[4], FfxFloat32x2 fMv)
     {
         const FfxFloat32x2 fUvP = px[i].fUv + fMv * FgTP();
         const FfxFloat32x2 fUvC = px[i].fUv - fMv * FgTC();
-        fSum += (IsUvInside(fUvP) && IsUvInside(fUvC)) ? FgDiff(SamplePreviousBackbuffer(fUvP), SampleCurrentBackbuffer(fUvC)) : 3.0f;
+        const FfxBoolean bInP = IsUvInside(fUvP);
+        const FfxBoolean bInC = IsUvInside(fUvC);
+#if !defined(FG_NO_BORDER)
+        // a sample off the screen as FgTryCandidate scores it
+        fSum += (bInP && bInC) ? FgDiff(SamplePreviousBackbuffer(fUvP), SampleCurrentBackbuffer(fUvC)) : (bInP != bInC) ? FG_BORDER : 3.0f;
+#else
+        fSum += (bInP && bInC) ? FgDiff(SamplePreviousBackbuffer(fUvP), SampleCurrentBackbuffer(fUvC)) : 3.0f;
+#endif
     }
 
     return 0.25f * fSum;
@@ -313,6 +320,9 @@ void computeFrameinterpolationQuad(FfxInt32x2 iQuad)
                 StoreStaticHistory(iPos, 0);
             }
         }
+#if defined(FFX_FRAMEINTERPOLATION_BIND_UAV_QUAD_MOTION)
+        StoreQuadMotion(iQuad, FfxFloat32x2(0.0f, 0.0f)); // m74: the motions of the scene before a cut are no candidates
+#endif
         return;
     }
 
@@ -636,9 +646,9 @@ void computeFrameinterpolationQuad(FfxInt32x2 iQuad)
         {
 #if defined(FG_DEBUG_VECTORS)
             // tests: r, g the chosen half vector in pixels (0.5 + v / 128), b the decision ((code + 0.5) / 32: 0 no motion, 1 + k
-            // the moving candidate k, 11 still by the history; + 16 when the edge handling decided)
+            // the moving candidate k, 13 still by the history; + 16 when the edge handling decided)
             const FfxFloat32x2 fMvPx = bStill ? FfxFloat32x2(0.0f, 0.0f) : px[i].fMvA * fSize;
-            const FfxInt32     iCode = (bForced ? 11 : (bStill ? 0 : 1 + px[i].iA)) + ((fEdge > 0.0f) ? 16 : 0);
+            const FfxInt32     iCode = (bForced ? 13 : (bStill ? 0 : 1 + px[i].iA)) + ((fEdge > 0.0f) ? 16 : 0);
             fColor = FfxFloat32x3(ffxSaturate(0.5f + fMvPx / 128.0f), (FfxFloat32(iCode) + 0.5f) / 32.0f);
 #else
             fColor = fDebug * (0.35f + 0.65f * dot(fColor, FfxFloat32x3(0.299f, 0.587f, 0.114f)));

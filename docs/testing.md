@@ -65,7 +65,7 @@ Real frames: GTA IV, 1920x1080, Niko walking while the camera turns, 4 tests.
 | + sub-pixel refinement, off-screen samples | 1.230 | 2.85 | 12,806 | 1,310 | 40.72 |
 | + a local search where nothing agrees (dropped) | 1.230 | 2.99 | 13,738 | 1,769 | 40.17 |
 | + skipping unchanged quads (< 0.02) (dropped) | 1.346 | 2.85 | 12,952 | 1,448 | 40.51 |
-| **m74: refinement where the error is > 0.03, off-screen, last frame's motion** | **1.237** | **2.84** | **12,893** | **1,451** | **40.72** |
+| **m74: refinement where the error is > 0.03, off-screen, last frame's motion** | **1.237** | **2.84** | **12,887** | **1,449** | **40.72** |
 
 Synthetic scenes (a GTA IV background; mean absolute error of the region):
 

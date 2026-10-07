@@ -87,8 +87,9 @@ namespace example
 			// 4. latency: where the presents fill every refresh, hold the game a hair under the display so the queue stays empty
 			const std::uint32_t generated = fg.generated();
 			const double presents = generated > 1 ? generated + 1.0 : repeats + 1.0;
-			const bool tight = frame_limit > 0.0 && r.display_hz / frame_limit - presents < 0.25;
-			const double hold = tight ? r.display_hz / presents - 0.05 : frame_limit;
+			// (no limit at all counts as tight: V-Sync alone would hold the game at the display and keep the queue full)
+			const bool tight = frame_limit <= 0.0 || r.display_hz / frame_limit - presents < 0.25;
+			const double hold = tight ? (frame_limit > 0.0 ? std::min(r.display_hz / presents - 0.05, frame_limit) : r.display_hz / presents - 0.05) : frame_limit;
 			if (hold != held_at)
 			{
 				held_at = hold;
@@ -118,7 +119,7 @@ namespace example
 
 					r.blit_to_swapchain(cmd, fg.output_image(), index);
 					r.draw_overlays(cmd, index); // or they blink
-					r.submit_and_present(cmd, acquired, index);
+					r.submit_and_present(cmd, acquired, index); // the submit must have reached the queue before the present waits on it
 					cmd = r.begin_frame_commands();
 				}
 			}

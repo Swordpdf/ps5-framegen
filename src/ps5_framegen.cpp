@@ -442,7 +442,7 @@ namespace ps5::framegen
 		m_cleared = false;
 		m_prepared = false;
 		m_timed_slots = 0;
-		m_gpu_ms_sum = m_gpu_ms_max = 0.0;
+		m_gpu_ms_sum = m_gpu_ms_max = m_gpu_flow_ms_sum = 0.0;
 		m_gpu_count = 0;
 		return true;
 	}
@@ -1135,6 +1135,8 @@ namespace ps5::framegen
 
 			for (const auto& set : m_luma) for (const image_t& i : set) clear(i);
 			// m73b: the still history is kept: the HUD stays where it was across a cut, and a pixel that changes starts again
+			// m74: the quads' motions are not (they belong to the scene before)
+			clear(m_quad_motion);
 		}
 
 		// The frame's picture (copied or drawn by the caller) and the clears, before the compute passes.
@@ -1220,9 +1222,10 @@ namespace ps5::framegen
 		const dispatch_t& d = m_dispatches[m_interp_dispatch];
 		const pipeline_t& p = m_pipelines[d.pipeline];
 
-		// The caller's copy of the frame before reads output_image(): this one writes it only after that (an execution dependency).
-		memory_barrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-			VK_ACCESS_SHADER_WRITE_BIT);
+		// The caller's copy of the frame before reads output_image(): this one writes it only after that; and the still history and the
+		// quads' motions the first one wrote are read here.
+		memory_barrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
 
 		// The same pass as record()'s last, with the i-th frame's constants (write_constants: one cbFI block a frame generated)
 		u32 offsets[2] = {};
