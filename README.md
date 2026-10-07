@@ -105,5 +105,7 @@ On real GTA IV frames (1920x1080, the frame between frames i and i+2 against the
   go into non-GPL projects.
 - **`tools/stb/`:** stb_image and stb_image_write (public domain or MIT, as stated in the files).
 
-Nothing here comes from Sony's SDK. The code uses only Khronos Vulkan and works on any Vulkan 1.1 device. On the PS5 it was run on
-RADV for the PS5 (presenting through VideoOut).
+Nothing here comes from Sony's SDK. The code uses only Khronos Vulkan: a Vulkan 1.1 device with `shaderStorageImageExtendedFormats`
+and subgroup quad operations in compute shaders ([docs/integration.md](docs/integration.md#the-device)). On the PS5 it was run on
+RADV for the PS5 (presenting through VideoOut), and on PCs on
+SwiftShader.

@@ -3,6 +3,15 @@
 `examples/present_loop.cpp` is the same as code. RPCS3-PS5's own integration is in its `rpcs3/Emu/RSX/VK/VKPresent.cpp` (the
 `RPCS3_PLATFORM_PS5` block in `VKGSRender::flip`).
 
+## The device
+
+Vulkan 1.1, with two things the shaders use that `create()` does not check:
+
+- the `shaderStorageImageExtendedFormats` feature, enabled on the device (the optical flow's R8 and R16G16 storage images);
+- subgroup quad operations in compute shaders (`VK_SUBGROUP_FEATURE_QUAD_BIT`; FSR3's luminance pyramid).
+
+RADV (the PS5's driver) and SwiftShader have both. `tools/fg-test.cpp` shows a device set up for it.
+
 ## The frame's picture
 
 The interpolator works on `R8G8B8A8_UNORM` images of the size given to `create()`, normally the size of the picture shown (the
@@ -37,7 +46,8 @@ The generated frame is presented `repeats` times, then the game's frame once (FI
 
 ```text
 half    = (game frame interval in refreshes) / 2
-repeats = 1 if half < 1.9, 2 if half < 3.8, 3 above, with 0.2 of hysteresis going down
+repeats = 1 if half < 1.9, 2 if half < 2.9, 3 above
+          (back down only below 1.8 and 2.8, so that it does not flicker between two)
 ```
 
 | Game rate | Display | repeats | What is shown |
@@ -47,7 +57,8 @@ repeats = 1 if half < 1.9, 2 if half < 3.8, 3 above, with 0.2 of hysteresis goin
 | 60 fps | 120 Hz | 1 | generated 1, the game's 1 |
 | any | 60 Hz | 1 | |
 
-Measure the interval as a running mean of the time between the game's flips (0.85/0.15 here), ignoring gaps over 250 ms.
+Measure the interval as a running mean of the time between the game's flips (0.85/0.15 here), ignoring gaps under 4 ms or over
+250 ms.
 
 ## More than one frame in between (the multiplier)
 
