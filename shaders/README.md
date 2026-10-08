@@ -1,11 +1,11 @@
-# shaders: AMD FSR3 frame interpolation, optical flow only (from RPCS3-PS5)
+# shaders: AMD FSR3 frame interpolation, optical flow only
 
 The shaders of the frame generation (`src/ps5_framegen.{h,cpp}`): AMD FidelityFX SDK 2.3.0's FSR3 optical flow
 and frame interpolation, MIT (see LICENSE.txt), compiled from HLSL to SPIR-V by glslang's HLSL front end into
 `src/framegen/fg_shaders.inc` with `tools/build-shaders.sh` (no DXC needed). The SDK itself is DX12 only;
 the host side here is plain Vulkan code of its own, not the SDK's backend.
 
-A game seen only through its frames (a PS3 game under RPCS3) gives no motion vectors or depth, so only FSR3's optical flow path runs (`FFX_FG_OF_ONLY`). FSR3's game vector path,
+A game seen only through its frames (a PS3 game under RPCS3, a PS2 game under PCSX2) gives no motion vectors or depth, so only FSR3's optical flow path runs (`FFX_FG_OF_ONLY`). FSR3's game vector path,
 disocclusion mask, inpainting and UI composition are not built.
 
 ## What is here

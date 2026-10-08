@@ -1,0 +1,99 @@
+# CI: the interpolator and its shaders checked on Mesa's lavapipe (a CPU Vulkan driver), the pacing's unit test, and the shaders
+# rebuilt from shaders/ to match src/framegen/fg_shaders.inc. docs/testing.md has what each check means.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # glslang 16.2.0 (the commit fg_shaders.inc was built with; 15.x can't parse FSR3's HLSL). Change both together.
+  GLSLANG_SHA: f0bd0257c308b9a26562c1a30c4748a0219cc951
+  GLSLANG_TAG: 16.2.0
+
+jobs:
+  test:
+    name: Scenes on lavapipe, pacing
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vulkan loader, headers and lavapipe
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends mesa-vulkan-drivers libvulkan-dev clang
+          ls /usr/share/vulkan/icd.d/
+
+      - name: Pacing unit test (GCC and Clang)
+        run: |
+          mkdir -p build
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc -o build/test_pacing tests/test_pacing.cpp
+          build/test_pacing
+          clang++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc -o build/test_pacing_clang tests/test_pacing.cpp
+          build/test_pacing_clang
+
+      - name: The example compiles
+        run: |
+          for cxx in g++ clang++; do
+            $cxx -std=c++17 -Wall -Wextra -Wno-missing-field-initializers -fsyntax-only -Isrc examples/present_loop.cpp
+          done
+
+      - name: Build fg-test
+        run: CXX=g++ VULKAN_HEADERS=/usr/include tools/build-fg-test.sh build/fg-test
+
+      - name: Synthetic scenes against their limits
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: python3 tools/check-scenes.py build/fg-test build/scenes
+
+      - name: Keep the pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenes
+          path: build/scenes/
+          if-no-files-found: ignore
+
+  shaders:
+    name: Shaders rebuilt match fg_shaders.inc
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cached glslang
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/glslang-bin
+          key: glslang-${{ env.GLSLANG_SHA }}-hlsl-noopt
+
+      - name: Build glslang
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git init -q ~/glslang-src
+          cd ~/glslang-src
+          git fetch -q --depth 1 https://github.com/KhronosGroup/glslang.git "$GLSLANG_SHA" \
+            || git fetch -q --depth 1 https://github.com/KhronosGroup/glslang.git "refs/tags/$GLSLANG_TAG"
+          git checkout -q FETCH_HEAD
+          echo "glslang at $(git rev-parse HEAD)"
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_HLSL=ON -DENABLE_OPT=OFF -DALLOW_EXTERNAL_SPIRV_TOOLS=OFF \
+            -DGLSLANG_TESTS=OFF -DENABLE_GLSLANG_BINARIES=ON
+          cmake --build build --target glslang-standalone -j"$(nproc)"
+          mkdir -p ~/glslang-bin
+          cp build/StandAlone/glslang ~/glslang-bin/glslangValidator
+
+      - name: Rebuild the shaders and compare
+        run: |
+          ~/glslang-bin/glslangValidator --version | head -1
+          mkdir -p build
+          GLSLANG=~/glslang-bin/glslangValidator OUT=build/fg_shaders.inc tools/build-shaders.sh
+          if ! cmp build/fg_shaders.inc src/framegen/fg_shaders.inc; then
+            echo "::error::src/framegen/fg_shaders.inc is not what shaders/ compiles to: run tools/build-shaders.sh (glslang $GLSLANG_TAG) and commit it"
+            diff <(grep -n 'name\|binding' build/fg_shaders.inc) <(grep -n 'name\|binding' src/framegen/fg_shaders.inc) | head -40 || true
+            exit 1
+          fi
+          echo "fg_shaders.inc matches shaders/"

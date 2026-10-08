@@ -8,6 +8,40 @@ CXX=clang++ VULKAN_HEADERS=/path/to/Vulkan-Headers/include tools/build-fg-test.s
 export VK_ICD_FILENAMES=/path/to/vk_swiftshader_icd.json
 ```
 
+## What CI runs
+
+`.github/workflows/ci.yml`, on every push and pull request:
+
+| Check | Command | What fails it |
+|---|---|---|
+| Synthetic scenes on lavapipe | `python3 tools/check-scenes.py build/fg-test` | a region's error above its limit, a generated frame above a fifth of the plain blend's error, or B8G8R8A8 frames giving another picture than R8G8B8A8 |
+| Pacing unit test | `tests/test_pacing.cpp` (911 checks), GCC and Clang with `-Werror` | any check |
+| The example compiles | `examples/present_loop.cpp`, `-fsyntax-only` | a compile error |
+| Shaders rebuilt | `tools/build-shaders.sh` with glslang 16.2.0, compared with `src/framegen/fg_shaders.inc` | a shader changed in `shaders/` without the `.inc` rebuilt (or the other way round) |
+
+The same on a PC (Ubuntu 24.04: `apt install mesa-vulkan-drivers libvulkan-dev`):
+
+```sh
+CXX=g++ VULKAN_HEADERS=/usr/include tools/build-fg-test.sh build/fg-test
+VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json python3 tools/check-scenes.py build/fg-test
+c++ -std=c++17 -Wall -Wextra -Isrc -o build/test_pacing tests/test_pacing.cpp && build/test_pacing
+```
+
+glslang 15 (Ubuntu 24.04's `glslang-tools`) can't parse FSR3's HLSL. Use 16.2.0: the Vulkan SDK's, or a source build with
+`-DENABLE_HLSL=ON -DENABLE_OPT=OFF` (the workflow shows one).
+
+The limits in `check-scenes.py` are about 1.5x today's scores on the default noise background (960x540, 12 px pan, the square at 20
+px a frame). SwiftShader and lavapipe give nearly the same:
+
+| Scene | Whole frame | Head edge | HUD | Square edge | Plain blend |
+|---|---|---|---|---|---|
+| `all` on SwiftShader | 0.22 | 1.27 | 0.72 | 3.16 | 4.93 |
+| `all` on lavapipe | 0.22 | 1.28 | 0.73 | 3.48 | 4.93 |
+| `head --head-move 6` on lavapipe | 0.29 | 1.75 | | | 4.37 |
+| `hud` on lavapipe | 0.08 | | 1.04 | | 3.52 |
+
+When a change makes a scene better, lower its limit in the same commit. When one makes it worse on purpose, say why in the commit.
+
 ## Synthetic scenes (a known middle frame)
 
 ```sh
@@ -55,7 +89,7 @@ best shift within 6 pixels: the score is artifacts, not timing. Several fg-test 
 
 ## Results of m74 (RPCS3-PS5, 2026-10-07)
 
-Real frames: GTA IV, 1920x1080, Niko walking while the camera turns, 4 tests.
+These came from frames of a game, which can't be shipped here, so CI can't repeat them. Real frames: GTA IV, 1920x1080, Niko walking while the camera turns, 4 tests.
 
 | Variant | Error | Moving | Bad (>40) | Specks | PSNR |
 |---|---|---|---|---|---|
@@ -80,7 +114,7 @@ against 0.18 for m73g.
 
 ## On the console
 
-RPCS3-PS5 logs a status line every 10 s:
+RPCS3-PS5 logs a status line every 10 s (PS5SX2's `[fg]` lines: one a while, plus one whenever the pacing's state changes):
 
 - the game's frame rate and the rate shown;
 - the GPU time per generated frame, split into optical flow and interpolation;
