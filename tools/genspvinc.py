@@ -2,7 +2,7 @@
 # genspvinc.py <out.inc> <name>=<file.spv>...: the SPIR-V of the frame generation passes as C++ arrays, with each pass's
 # descriptor bindings (read from the module) and its workgroup size.
 #
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 from spvrefl import parse

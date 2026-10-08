@@ -22,7 +22,7 @@
 //
 // Build: tools/build-fg-test.sh. Run: VK_ICD_FILENAMES=<SwiftShader's vk_swiftshader_icd.json> fg-test ...
 //
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "ps5_framegen.h"
 

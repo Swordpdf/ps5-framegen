@@ -4,7 +4,7 @@
 // ffx_opticalflow.cpp (dispatch()) and ffx_frameinterpolation.cpp (ffxFrameInterpolationDispatch()), MIT, Advanced Micro Devices.
 //
 // Copyright (C) 2026 swordpdf
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "ps5_framegen.h"
 

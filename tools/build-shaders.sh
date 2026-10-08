@@ -13,7 +13,7 @@
 # Extra -D options after the script's name are passed to every pass (the test defines in ffx_frameinterpolation.h, e.g.
 # -DFG_NO_REFINE), and OUT=<file> writes the result elsewhere: how tools/truth.py compares variants.
 #
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 ffx=${FFX:-$root/shaders}

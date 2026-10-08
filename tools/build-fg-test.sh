@@ -5,7 +5,7 @@
 # Run it with VK_ICD_FILENAMES set to a software Vulkan driver's ICD file (SwiftShader's vk_swiftshader_icd.json, which ships with
 # Chromium builds), or on any Vulkan GPU.
 #
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out=${1:-$root/build/fg-test}

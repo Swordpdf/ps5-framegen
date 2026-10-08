@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # spvrefl.py <file.spv>...: the descriptor bindings (set, binding, kind, name), push constants and local size of compute SPIR-V modules.
 #
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 import struct, sys
 
 OP_NAME, OP_MEMBERNAME, OP_DECORATE, OP_VARIABLE, OP_TYPEPOINTER = 5, 6, 71, 59, 32

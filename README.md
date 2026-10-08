@@ -136,8 +136,9 @@ run all of it.
 
 - **`shaders/`:** AMD FidelityFX SDK files under the MIT licence ([shaders/LICENSE.txt](shaders/LICENSE.txt)). The changes and the
   new passes there are under the same licence.
-- **`src/`, `tests/`, `tools/`, `examples/`, `docs/`:** GPL-2.0-only ([LICENSES/GPL-2.0-only.txt](LICENSES/GPL-2.0-only.txt)),
-  copyright swordpdf. Ask if you need another licence for a non-GPL project.
+- **`src/`, `tests/`, `tools/`, `examples/`, `docs/`:** GPL-3.0-or-later ([COPYING](COPYING)), copyright swordpdf: a project
+  that includes this code is distributed under the GPL 3 as well (as PCSX2 and PS5SX2 are). Ask if you need another licence for a
+  non-GPL project.
 - **`tools/stb/`:** stb_image and stb_image_write (public domain or MIT, as stated in the files).
 
 Nothing here comes from Sony's SDK. The code uses only Khronos Vulkan.

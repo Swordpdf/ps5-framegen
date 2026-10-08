@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # spvubo.py <file.spv>: member names and offsets of the uniform blocks
 #
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 import struct, sys
 OP_NAME, OP_MEMBERNAME, OP_MEMBERDECORATE, OP_DECORATE, OP_VARIABLE, OP_TYPEPOINTER, OP_TYPESTRUCT = 5, 6, 72, 71, 59, 32, 30
 for p in sys.argv[1:]:

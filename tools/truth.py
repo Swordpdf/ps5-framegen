@@ -15,7 +15,7 @@
 #
 # Needs python3 with numpy and Pillow. FG_TEST: tools/build-fg-test.sh's result; VK_ICD_FILENAMES as for fg-test.
 #
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 import os, subprocess, sys, tempfile
 import numpy as np
 from PIL import Image, ImageFilter

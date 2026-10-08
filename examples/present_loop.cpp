@@ -3,7 +3,7 @@
 // pcsx2/GS/Renderers/Vulkan/GSDeviceVK.cpp and GSRenderer.cpp, RPCS3-PS5's in rpcs3/Emu/RSX/VK/VKPresent.cpp.
 //
 // Copyright (C) 2026 swordpdf
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "ps5_framegen.h"
 #include "ps5_framegen_pacing.h"

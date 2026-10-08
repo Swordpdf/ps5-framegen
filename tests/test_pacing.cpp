@@ -2,7 +2,7 @@
 // 120 Hz displays. It comes from PS5SX2's tests/fgpacing.
 //   c++ -std=c++17 -Wall -Wextra -Isrc -o build/test_pacing tests/test_pacing.cpp && build/test_pacing
 // Copyright (C) 2026 swordpdf
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "ps5_framegen_pacing.h"
 
 #include <cmath>

@@ -6,7 +6,7 @@
 # Needs a Vulkan device: VK_ICD_FILENAMES=.../lvp_icd.json (Mesa's lavapipe) or SwiftShader's ICD, or a GPU.
 #
 # Copyright (C) 2026 swordpdf
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-or-later
 import os
 import re
 import subprocess

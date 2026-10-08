@@ -1,6 +1,6 @@
 // ps5-framegen: when to show generated frames and for how long (the pacing), counted in the source's own frame clock.
 // Copyright (C) 2026 swordpdf
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Header-only and independent of Vulkan, so tests/test_pacing.cpp runs it on a PC. It comes from PS5SX2 (builds vk-285-133 to
 // 135), where it replaced a first pacing that timed the game's frames on the wall clock between presents.
