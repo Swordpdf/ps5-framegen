@@ -135,10 +135,10 @@ run all of it.
 ## Licences
 
 - **`shaders/`:** AMD FidelityFX SDK files under the MIT licence ([shaders/LICENSE.txt](shaders/LICENSE.txt)). The changes and the
-  new passes there are under the same licence.
+  new passes there are under the same licence, and so is `src/framegen/fg_shaders.inc`, which is compiled from them.
 - **`src/`, `tests/`, `tools/`, `examples/`, `docs/`:** GPL-3.0-or-later ([COPYING](COPYING)), copyright swordpdf: a project
   that includes this code is distributed under the GPL 3 as well (as PCSX2 and PS5SX2 are). Ask if you need another licence for a
-  non-GPL project.
-- **`tools/stb/`:** stb_image and stb_image_write (public domain or MIT, as stated in the files).
+  non-GPL project. (GPL-2.0-only up to commit cb951d5.)
+- **`tools/stb/`:** stb_image and stb_image_write by Sean Barrett (public domain or MIT, as stated in the files).
 
 Nothing here comes from Sony's SDK. The code uses only Khronos Vulkan.
