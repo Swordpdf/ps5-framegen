@@ -1,8 +1,9 @@
-// RPCS3-PS5 (m73): frame generation, the host side of FSR3's optical flow and frame interpolation (ps5_framegen.h).
+// ps5-framegen: the host side of FSR3's optical flow and frame interpolation (ps5_framegen.h).
 //
 // The order of the passes, their sizes, the resources each binds and the constants are those of the FidelityFX SDK 2.3.0's
 // ffx_opticalflow.cpp (dispatch()) and ffx_frameinterpolation.cpp (ffxFrameInterpolationDispatch()), MIT, Advanced Micro Devices.
 //
+// Copyright (C) 2026 swordpdf
 // SPDX-License-Identifier: GPL-2.0-only
 
 #include "ps5_framegen.h"
@@ -277,7 +278,7 @@ namespace ps5::framegen
 		img = {};
 	}
 
-	bool interpolator::create(VkPhysicalDevice physical, VkDevice device, u32 width, u32 height, std::string& error)
+	bool interpolator::create(VkPhysicalDevice physical, VkDevice device, u32 width, u32 height, std::string& error, VkFormat frame_format)
 	{
 		destroy();
 
@@ -307,7 +308,7 @@ namespace ps5::framegen
 
 		for (image_t& c : m_color)
 		{
-			if (!make_image(c, k_format, width, height, color_usage, error)) return fail();
+			if (!make_image(c, frame_format, width, height, color_usage, error)) return fail();
 		}
 
 		if (!make_image(m_output, k_format, width, height, work_usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, error)) return fail();
@@ -457,9 +458,60 @@ namespace ps5::framegen
 			pipeline_t& p = m_pipelines[i];
 			p.shader = i;
 
+			// Compact bindings: numbered 0..n-1 in the order of the shader's own numbers (0, 100, 200, 300, 405 ..., FSR3's HLSL
+			// registers), in the SPIR-V's Binding decorations, the set layout and the writes alike. ps5vk's descriptor tables run
+			// to a set's highest binding number and its compiler keeps a binding number in a byte: the sparse numbers made a
+			// 409-slot table and vkCreateComputePipelines failed ("internal error"). The order is kept, so the dynamic uniform
+			// blocks' offsets follow the bindings as before. Other drivers don't mind either way.
+			{
+				std::vector<u32> order(sh.binding_count);
+				for (u32 b = 0; b < sh.binding_count; b++)
+					order[b] = b;
+				std::sort(order.begin(), order.end(), [&sh](u32 a, u32 b) { return sh.bindings[a].binding < sh.bindings[b].binding; });
+				p.slot.assign(sh.binding_count, 0);
+				for (u32 k = 0; k < sh.binding_count; k++)
+					p.slot[order[k]] = k;
+			}
+
+			std::vector<u32> code(sh.code, sh.code + sh.words);
+
+			for (std::size_t at = 5; at < code.size();)
+			{
+				const u32 op = code[at] & 0xffffu;
+				const u32 count = code[at] >> 16;
+
+				if (count == 0 || at + count > code.size())
+				{
+					error = std::string("framegen: the SPIR-V of ") + sh.name + " is cut short";
+					return false;
+				}
+
+				if (op == 71 && count >= 4 && code[at + 2] == 33) // OpDecorate <id> Binding <n>
+				{
+					bool found = false;
+
+					for (u32 b = 0; b < sh.binding_count && !found; b++)
+					{
+						if (sh.bindings[b].binding == code[at + 3])
+						{
+							code[at + 3] = p.slot[b];
+							found = true;
+						}
+					}
+
+					if (!found)
+					{
+						error = std::string("framegen: binding ") + std::to_string(code[at + 3]) + " of " + sh.name + " is not in its table";
+						return false;
+					}
+				}
+
+				at += count;
+			}
+
 			VkShaderModuleCreateInfo mod{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-			mod.codeSize = sh.words * 4;
-			mod.pCode = sh.code;
+			mod.codeSize = code.size() * 4;
+			mod.pCode = code.data();
 
 			if (vkCreateShaderModule(m_device, &mod, nullptr, &p.module) != VK_SUCCESS)
 			{
@@ -471,7 +523,7 @@ namespace ps5::framegen
 
 			for (u32 b = 0; b < sh.binding_count; b++)
 			{
-				bindings[b] = {sh.bindings[b].binding, sh.bindings[b].type, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+				bindings[b] = {p.slot[b], sh.bindings[b].type, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
 			}
 
 			VkDescriptorSetLayoutCreateInfo set_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -769,7 +821,7 @@ namespace ps5::framegen
 					VkWriteDescriptorSet& wr = writes[b];
 					wr = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
 					wr.dstSet = d.set[p];
-					wr.dstBinding = fb.binding;
+					wr.dstBinding = m_pipelines[s.shader].slot[b]; // the compact number (create())
 					wr.descriptorCount = 1;
 					wr.descriptorType = fb.type;
 

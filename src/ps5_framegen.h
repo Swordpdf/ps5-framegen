@@ -1,4 +1,4 @@
-// RPCS3-PS5 (m73): frame generation. AMD FSR3's frame interpolation (FidelityFX SDK 2.3.0, MIT) on plain Vulkan: from two frames
+// ps5-framegen: frame generation. AMD FSR3's frame interpolation (FidelityFX SDK 2.3.0, MIT) on plain Vulkan: from two frames
 // of the game, the frame halfway between them, shown before the second one (a game held at 30 fps is shown at 60).
 //
 // A PS3 game gives no motion vectors or depth, so this is FSR3's optical flow path alone (FFX_FG_OF_ONLY in the shaders):
@@ -15,13 +15,22 @@
 // compiled to SPIR-V (tools/build-shaders.sh, sources in shaders/); this file and its .cpp are
 // the host side (the SDK's ffx_opticalflow.cpp and ffx_frameinterpolation.cpp redone on Vulkan, without the SDK's backend).
 //
-// No RPCS3 dependency: the host tool tools/fg-test.cpp runs the same code on a software Vulkan device.
+// No dependency on an emulator, the console's SDK or AMD's SDK backend: the host tool tools/fg-test.cpp runs the same code on a
+// software Vulkan device. It came from RPCS3-PS5 (m74) and runs in PS5SX2 too, on both PS5 Vulkan drivers (RADV and ps5vk).
+//
+// Copyright (C) 2026 swordpdf
 //
 // SPDX-License-Identifier: GPL-2.0-only
 
 #pragma once
 
+// Your own Vulkan header or loader (volk, a function table) instead of the Khronos one: -DPS5_FRAMEGEN_VULKAN_HEADER='"my_vk.h"'.
+// It has to declare the vk* commands ps5_framegen.cpp calls under their usual names.
+#ifdef PS5_FRAMEGEN_VULKAN_HEADER
+#include PS5_FRAMEGEN_VULKAN_HEADER
+#else
 #include <vulkan/vulkan_core.h>
+#endif
 
 #include <cstdint>
 #include <string>
@@ -29,23 +38,23 @@
 
 namespace ps5::framegen
 {
-	// ps5.yml "Frame Generation" (also in a step, a test mode or a game's Title Steps): whether the game's frames get the frame
-	// between them shown too. The renderer (in RPCS3-PS5, rpcs3/Emu/RSX/VK/VKPresent.cpp) reads it at every flip.
+	// Settings shared between the app's settings code and its renderer (thread-safe; the renderer reads them at every flip). They
+	// only hold values: what they mean is up to the renderer (examples/present_loop.cpp).
+	//
+	// Whether the game's frames get the frame between them shown too (RPCS3-PS5: ps5.yml "Frame Generation").
 	void set_wanted(bool on);
 	bool wanted();
 
-	// m73b: ps5.yml "Frame Generation Limit": 0 (the default) leaves the game at its own frame rate (up to RPCS3's frame limit) and
-	// shows one generated frame after each of its frames; 30, 50 or 60 holds it at that rate (RPCS3's frame limit) while frame
-	// generation is on. 30 on a 120 Hz display is m73's even 30 -> 60.
+	// A frame rate to hold the game at while frame generation is on: 0 (the default) leaves it at its own rate; 30 on a 120 Hz
+	// display gives an even 30 -> 60 (RPCS3-PS5: "Frame Generation Limit").
 	void set_limit(std::uint32_t fps);
 	std::uint32_t limit();
 
-	// m73b: ps5.yml "Frame Generation Debug": the generated frames show the interpolation's decisions in colour instead
-	// (interpolator::set_debug_view).
+	// The generated frames show the interpolation's decisions in colour instead (interpolator::set_debug_view).
 	void set_debug(bool on);
 	bool debug();
 
-	// m74: ps5.yml "Frame Generation Multiplier": 2 (the default) shows one generated frame between two of the game's, 3 two (at a
+	// The multiplier: 2 (the default) shows one generated frame between two of the game's, 3 two (at a
 	// third and two thirds of the way: 40 fps shown at 120), 4 three (30 at 120). Each extra frame delays the game's own frame by
 	// one more refresh, so 2 has the least input lag.
 	void set_multiplier(std::uint32_t times);
@@ -60,15 +69,18 @@ namespace ps5::framegen
 		~interpolator();
 
 		// The passes, images and buffers for frames of width x height (the size of the picture shown). false (and `error`) when
-		// the device lacks something or memory runs out.
-		bool create(VkPhysicalDevice physical, VkDevice device, std::uint32_t width, std::uint32_t height, std::string& error);
+		// the device lacks something or memory runs out. `frame_format` is the format of the game's frames (frame_image(),
+		// previous_image()): R8G8B8A8_UNORM, or B8G8R8A8_UNORM when the renderer's own pipelines draw into them in the swapchain's
+		// format (the passes only sample them). output_image() is always k_format.
+		bool create(VkPhysicalDevice physical, VkDevice device, std::uint32_t width, std::uint32_t height, std::string& error,
+			VkFormat frame_format = k_format);
 		void destroy();
 
 		bool ready() const { return m_device != VK_NULL_HANDLE; }
 		std::uint32_t width() const { return m_width; }
 		std::uint32_t height() const { return m_height; }
 
-		// The frames are R8G8B8A8_UNORM images kept in VK_IMAGE_LAYOUT_GENERAL (usage: transfer source and destination, sampled,
+		// The frames are images of `frame_format` (create()) kept in VK_IMAGE_LAYOUT_GENERAL (usage: transfer source and destination, sampled,
 		// colour attachment). Each frame the caller calls prepare() (it puts the images in GENERAL the first time), copies (or
 		// draws) this frame's picture into frame_image(), then calls record().
 		static constexpr VkFormat k_format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -133,6 +145,8 @@ namespace ps5::framegen
 			VkPipelineLayout layout = VK_NULL_HANDLE;
 			VkPipeline pipeline = VK_NULL_HANDLE;
 			std::uint32_t shader = 0; // index into the shader table
+			// The binding number each of the shader's bindings has here, in its table's order: 0..n-1 (create(), "compact bindings").
+			std::vector<std::uint32_t> slot;
 		};
 
 		// One dispatch of a frame: its pipeline, its descriptor set (one for each frame parity), the uniform blocks it reads

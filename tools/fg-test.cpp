@@ -703,7 +703,13 @@ int main(int argc, char** argv)
 	ps5::framegen::interpolator fg;
 	std::string error;
 	const auto t0 = std::chrono::steady_clock::now();
-	if (!fg.create(g.physical, g.device, a.w, a.h, error)) die(("create: " + error).c_str());
+	// FG_TEST_BGRA=1: the frames in B8G8R8A8_UNORM (create()'s frame_format, as a renderer drawing in a BGRA swapchain's format
+	// has them), uploaded with R and B swapped; the result must be the same as with R8G8B8A8.
+	const char* bgra_env = std::getenv("FG_TEST_BGRA");
+	const bool bgra = bgra_env && bgra_env[0] == '1';
+	if (!fg.create(g.physical, g.device, a.w, a.h, error, bgra ? VK_FORMAT_B8G8R8A8_UNORM : ps5::framegen::interpolator::k_format))
+		die(("create: " + error).c_str());
+	if (bgra) std::printf("frames in B8G8R8A8_UNORM\n");
 	const auto t1 = std::chrono::steady_clock::now();
 	std::printf("created for %dx%d in %.0f ms\n", a.w, a.h, std::chrono::duration<double, std::milli>(t1 - t0).count());
 
@@ -719,6 +725,11 @@ int main(int argc, char** argv)
 	{
 		const picture cur = frame_at(frame);
 		std::memcpy(map, cur.rgba.data(), bytes);
+		if (bgra)
+		{
+			unsigned char* px = static_cast<unsigned char*>(map);
+			for (size_t i = 0; i < bytes; i += 4) std::swap(px[i], px[i + 2]);
+		}
 		VkCommandBuffer cmd = g.begin();
 		fg.prepare(cmd);
 		fg.set_debug_view(debug_view && frame == frames - 1);
